@@ -319,8 +319,14 @@ class ProductStocksVerifyCommand extends Command
 
             if($stockReserve !== $ordersReserve)
             {
+
+                /** Если резерв на складе больше расчетного - резерв некорректен */
+                $format = ($stockReserve > $ordersReserve)
+                    ? '<fg=bright-red>%s : резерв на складе %s => расчетный %s</>'
+                    : '%s : резерв на складе %s => расчетный %s';
+
                 $this->io->text(sprintf(
-                    '%s : резерв на складе %s => расчетный %s ',
+                    $format,
                     $CurrentProductIdentifierResult->getArticle(),
                     $stockReserve,
                     $ordersReserve,

@@ -39,6 +39,7 @@ use BaksDev\Products\Product\Type\Offers\Variation\Modification\ConstId\ProductM
 use BaksDev\Products\Product\Type\Offers\Variation\Modification\Id\ProductModificationUid;
 use BaksDev\Products\Stocks\Repository\ProductStocksTotal\ProductStocksTotalInterface;
 use BaksDev\Products\Stocks\Repository\ProductStocksTotalByReserve\ProductStocksTotalByReserveInterface;
+use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductOrdersWaitReserve\ProductOrdersWaitReserveVerifyInterface;
 use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductStocksIncoming\ProductStocksIncomingVerifyInterface;
 use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductStocksMove\ProductStocksMoveVerifyInterface;
 use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductStocksOrders\ProductStocksIncomingOrdersInterface;
@@ -75,6 +76,7 @@ class ProductStocksVerifyCommand extends Command
         private ProductStocksOrdersReserveVerifyInterface $ProductStocksOrdersReserveVerifyRepository,
         private ProductStocksTotalInterface $ProductStocksTotalRepository,
         private ProductStocksTotalByReserveInterface $ProductStocksTotalByReserveRepository,
+        private ProductOrdersWaitReserveVerifyInterface $ProductOrdersWaitReserveVerifyRepository,
         #[Autowire(env: 'PROJECT_USER')] private string|null $projectUser = null,
     )
     {
@@ -315,22 +317,34 @@ class ProductStocksVerifyCommand extends Command
                 ->forModificationConst($ProductStocksTotalVerifyResult->getProductModificationConst())
                 ->reserve();
 
+
             $ordersReserve += $moveReserve;
 
             if($stockReserve !== $ordersReserve)
             {
+                /* Пробуем определить количество не отправленных на склад */
+                $waitReserve = $this->ProductOrdersWaitReserveVerifyRepository
+                    ->forProfile($profile)
+                    ->forProduct($ProductStocksTotalVerifyResult->getProduct())
+                    ->forOfferConst($ProductStocksTotalVerifyResult->getProductOfferConst())
+                    ->forVariationConst($ProductStocksTotalVerifyResult->getProductVariationConst())
+                    ->forModificationConst($ProductStocksTotalVerifyResult->getProductModificationConst())
+                    ->find();
 
-                /** Если резерв на складе больше расчетного - резерв некорректен */
-                $format = ($stockReserve > $ordersReserve)
-                    ? '<fg=bright-red>%s : резерв на складе %s => расчетный %s</>'
-                    : '%s : резерв на складе %s => расчетный %s';
+                if($stockReserve !== ($ordersReserve - $waitReserve))
+                {
+                    /** Если резерв на складе больше расчетного - резерв некорректен */
+                    $format = ($stockReserve > $ordersReserve)
+                        ? '<fg=bright-red>%s : резерв на складе %s => расчетный %s</>'
+                        : '%s : резерв на складе %s => расчетный %s';
 
-                $this->io->text(sprintf(
-                    $format,
-                    $CurrentProductIdentifierResult->getArticle(),
-                    $stockReserve,
-                    $ordersReserve,
-                ));
+                    $this->io->text(sprintf(
+                        $format,
+                        $CurrentProductIdentifierResult->getArticle(),
+                        $stockReserve,
+                        $ordersReserve,
+                    ));
+                }
 
                 if($CurrentProductIdentifierResult->getArticle() === $article)
                 {

@@ -51,6 +51,7 @@ use BaksDev\Products\Product\Type\Offers\Variation\Modification\ConstId\ProductM
 use BaksDev\Products\Product\Type\Offers\Variation\Modification\Id\ProductModificationUid;
 use BaksDev\Products\Stocks\Repository\ProductStocksTotal\ProductStocksTotalInterface;
 use BaksDev\Products\Stocks\Repository\ProductStocksTotalByReserve\ProductStocksTotalByReserveInterface;
+use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductOrdersWaitReserve\ProductOrdersWaitReserveVerifyInterface;
 use BaksDev\Products\Stocks\Repository\VerifyByProfile\ProductStocksTotal\ProductStocksTotalVerifyInterface;
 use BaksDev\Users\Profile\UserProfile\Entity\Event\Warehouse\UserProfileWarehouse;
 use BaksDev\Users\Profile\UserProfile\Entity\UserProfile;
@@ -79,6 +80,7 @@ class ProductCardVerifyCommand extends Command
         private CurrentQuantityByOfferInterface $CurrentQuantityByOfferRepository,
         private CurrentQuantityByVariationInterface $CurrentQuantityByVariationRepository,
         private CurrentQuantityByModificationInterface $CurrentQuantityByModificationRepository,
+        private ProductOrdersWaitReserveVerifyInterface $ProductOrdersWaitReserveVerifyRepository,
     )
     {
         parent::__construct();
@@ -175,6 +177,7 @@ class ProductCardVerifyCommand extends Command
 
             if($cardQuantity->getQuantity() !== $logisticTotal)
             {
+
                 $io->text(sprintf(
                     '<fg=bright-red>%s : остаток в карточке %s => расчетный %s</>',
                     $CurrentProductIdentifierResult->getArticle(),
@@ -192,12 +195,25 @@ class ProductCardVerifyCommand extends Command
 
             if($cardQuantity->getReserve() !== $logisticReserve)
             {
-                $io->text(sprintf(
-                    '%s : резерв в карточке %s => расчетный %s',
-                    $CurrentProductIdentifierResult->getArticle(),
-                    $cardQuantity->getReserve(),
-                    $logisticReserve,
-                ));
+
+                /** Получаем количество резерва на продукт по заказам не отправленным на склад */
+                $waitReserve = $this->ProductOrdersWaitReserveVerifyRepository
+                    ->forProduct($ProductStocksTotalVerifyResult->getProduct())
+                    ->forOfferConst($ProductStocksTotalVerifyResult->getProductOfferConst())
+                    ->forVariationConst($ProductStocksTotalVerifyResult->getProductVariationConst())
+                    ->forModificationConst($ProductStocksTotalVerifyResult->getProductModificationConst())
+                    ->find();
+
+                if($cardQuantity->getReserve() !== ($logisticReserve + $waitReserve))
+                {
+                    $io->text(sprintf(
+                        '%s : резерв в карточке %s => расчетный %s (еще в ожидании %s)',
+                        $CurrentProductIdentifierResult->getArticle(),
+                        $cardQuantity->getReserve(),
+                        $logisticReserve,
+                        $waitReserve,
+                    ));
+                }
 
                 if($CurrentProductIdentifierResult->getArticle() === $article)
                 {
